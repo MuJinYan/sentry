@@ -19,6 +19,7 @@ from sentry.models import (
     TeamAvatar,
     User,
 )
+from sentry.scim.endpoints.constants import SCIM_SCHEMA_GROUP
 from sentry.utils.compat import zip
 from sentry.utils.json import JSONData
 
@@ -184,3 +185,19 @@ class TeamWithProjectsSerializer(TeamSerializer):
         d["projects"] = attrs["projects"]
         d["externalTeams"] = attrs["externalTeams"]
         return d
+
+
+class TeamSCIMSerializer(Serializer):  # type: ignore
+    def serialize(self, obj, attrs, user, **kwargs):
+        return {
+            "schemas": [SCIM_SCHEMA_GROUP],
+            "id": obj.id,
+            "displayName": obj.slug,
+            "members": [
+                {"value": str(om.id), "display": om.get_email()} for om in obj.member_set
+            ]  # TODO: what happens when this gets very large?
+            if not kwargs.get("members_null", None)
+            else None,
+            # TODO: does value have to be a string?
+            "meta": {"resourceType": "Group"},
+        }

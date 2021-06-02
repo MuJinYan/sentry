@@ -1,7 +1,14 @@
 import pytest
 from django.urls import reverse
 
-from sentry.models import AuthProvider, OrganizationMember
+from sentry.models import (
+    AuthProvider,
+    InviteStatus,
+    OrganizationMember,
+    OrganizationMemberTeam,
+    Team,
+    TeamStatus,
+)
 from sentry.testutils import APITestCase
 
 CREATE_USER_POST_DATA = {
@@ -15,6 +22,12 @@ CREATE_USER_POST_DATA = {
     "groups": [],
     "password": "1mz050nq",
     "active": True,
+}
+
+CREATE_GROUP_POST_DATA = {
+    "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+    "displayName": "Test SCIMv2",
+    "members": [],
 }
 
 
@@ -296,3 +309,263 @@ class SCIMUserTests(APITestCase):
         assert response.data["startIndex"] == 101
 
     # TODO: test patch with bad op
+
+
+class SCIMGroupTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        auth_provider = AuthProvider.objects.create(
+            organization=self.organization, provider="dummy"
+        )
+        with self.feature({"organizations:sso-scim": True}):
+            auth_provider.enable_scim(self.user)
+            auth_provider.save()
+        self.login_as(user=self.user)
+
+    def test_group_flow(self):
+        member1 = self.create_member(user=self.create_user(), organization=self.organization)
+        member2 = self.create_member(user=self.create_user(), organization=self.organization)
+        # test index route returns empty list
+        url = reverse("sentry-scim-organization-team-index", args=[self.organization.slug])
+        response = self.client.get(f"{url}?startIndex=1&count=100")
+        correct_get_data = {
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+            "totalResults": 0,
+            "startIndex": 1,
+            "itemsPerPage": 0,
+            "Resources": [],
+        }
+        assert response.status_code == 200, response.content
+        assert response.data == correct_get_data
+
+        # test team route 404s
+        url = reverse(
+            "sentry-scim-organization-team-details",
+            args=[self.organization.slug, 2],
+        )
+        response = self.client.get(url)
+        assert response.status_code == 404, response.content
+        assert response.data == {
+            "detail": "Group not found.",
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+        }
+        # test team creation
+        url = reverse(
+            "sentry-scim-organization-team-index",
+            args=[self.organization.slug],
+        )
+        response = self.client.post(url, CREATE_GROUP_POST_DATA)
+        assert response.status_code == 201, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "test-scimv2",
+            "members": [],
+            "meta": {"resourceType": "Group"},
+        }
+
+        # test team details GET
+        url = reverse(
+            "sentry-scim-organization-team-details",
+            args=[self.organization.slug, 2],
+        )
+        response = self.client.get(url)
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "test-scimv2",
+            "members": [],
+            "meta": {"resourceType": "Group"},
+        }
+
+        # test team index GET
+        url = reverse("sentry-scim-organization-team-index", args=[self.organization.slug])
+        response = self.client.get(f"{url}?startIndex=1&count=100")
+        response = self.client.get(url)
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+            "totalResults": 1,
+            "startIndex": 1,
+            "itemsPerPage": 1,
+            "Resources": [
+                {
+                    "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+                    "id": 2,
+                    "displayName": "test-scimv2",
+                    "members": [],
+                    "meta": {"resourceType": "Group"},
+                }
+            ],
+        }
+
+        # update a team name
+        url = reverse("sentry-scim-organization-team-details", args=[self.organization.slug, 2])
+        response = self.client.patch(
+            url,
+            {
+                "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                "Operations": [
+                    {
+                        "op": "replace",
+                        "value": {
+                            "id": 2,
+                            "displayName": "newName",
+                        },
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "newname",
+            "members": None,
+            "meta": {"resourceType": "Group"},
+        }
+        # assert slug exists
+        assert Team.objects.filter(organization=self.organization, slug="newname").exists()
+
+        # Add a member to a team
+
+        url = reverse("sentry-scim-organization-team-details", args=[self.organization.slug, 2])
+        response = self.client.patch(
+            url,
+            {
+                "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                "Operations": [
+                    {
+                        "op": "add",
+                        "path": "members",
+                        "value": [
+                            {
+                                "value": member1.id,
+                                "display": member1.email,
+                            }
+                        ],
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "newname",
+            "members": None,
+            "meta": {"resourceType": "Group"},
+        }
+        assert OrganizationMemberTeam.objects.filter(
+            team_id=2, organizationmember_id=member1.id
+        ).exists()
+
+        # remove a member from a team
+
+        url = reverse("sentry-scim-organization-team-details", args=[self.organization.slug, 2])
+        response = self.client.patch(
+            url,
+            {
+                "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                "Operations": [
+                    {
+                        "op": "remove",
+                        "path": 'members[value eq "2"]',
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "newname",
+            "members": None,
+            "meta": {"resourceType": "Group"},
+        }
+        assert not OrganizationMemberTeam.objects.filter(
+            team_id=2, organizationmember_id=member1.id
+        ).exists()
+
+        # replace the entire member list
+
+        member3 = self.create_member(user=self.create_user(), organization=self.organization)
+        OrganizationMemberTeam.objects.create(organizationmember=member3, team_id=2)
+        url = reverse("sentry-scim-organization-team-details", args=[self.organization.slug, 2])
+        response = self.client.patch(
+            url,
+            {
+                "schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                "Operations": [
+                    {
+                        "op": "replace",
+                        "path": "members",
+                        "value": [
+                            {
+                                "value": member1.id,
+                                "display": "test.user@okta.local",
+                            },
+                            {
+                                "value": member2.id,
+                                "display": "test.user@okta.local",
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200, response.content
+        assert response.data == {
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "id": 2,
+            "displayName": "newname",
+            "members": None,
+            "meta": {"resourceType": "Group"},
+        }
+        assert OrganizationMemberTeam.objects.filter(
+            team_id=2, organizationmember_id=member1.id
+        ).exists()
+        assert OrganizationMemberTeam.objects.filter(
+            team_id=2, organizationmember_id=member2.id
+        ).exists()
+
+        assert not OrganizationMemberTeam.objects.filter(
+            team_id=2, organizationmember_id=member3.id
+        ).exists()
+
+        # test index route returns with members
+        url = reverse("sentry-scim-organization-team-index", args=[self.organization.slug])
+        response = self.client.get(f"{url}?startIndex=1&count=100")
+        correct_get_data = {
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+            "totalResults": 1,
+            "startIndex": 1,
+            "itemsPerPage": 1,
+            "Resources": [
+                {
+                    "displayName": "newname",
+                    "id": 2,
+                    "members": [
+                        {"display": "ffadfcaad01f4c3e9e9bd9224988966c@example.com", "value": "2"},
+                        {"display": "2d1585aab9c04e7b90a8e2e479a89e5f@example.com", "value": "3"},
+                    ],
+                    "meta": {"resourceType": "Group"},
+                    "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+                }
+            ],
+        }
+        assert response.status_code == 200, response.content
+        assert response.data == correct_get_data
+
+        # delete the team
+        url = reverse("sentry-scim-organization-team-details", args=[self.organization.slug, 2])
+        response = self.client.delete(url)
+        assert response.status_code == 204, response.content
+
+        assert Team.objects.get(id=2).status == TeamStatus.PENDING_DELETION
+
+
+# TODO: test adding member that doesn't exist to a team
+# TODO: convert team id to use var
+# TODO: try to get, delete patch team that doesnt exist

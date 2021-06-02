@@ -10,7 +10,14 @@ SCIM_404_USER_RES = {
     "detail": "User not found.",
 }
 
+SCIM_404_GROUP_RES = {
+    "schemas": [SCIM_API_ERROR],
+    "detail": "Group not found.",
+}
+
 SCIM_409_USER_EXISTS = {
     "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
     "detail": "User already exists in the database.",
 }
+
+SCIM_SCHEMA_GROUP = "urn:ietf:params:scim:schemas:core:2.0:Group"

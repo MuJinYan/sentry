@@ -46,6 +46,7 @@ from sentry.incidents.endpoints.project_alert_rule_index import (
 from sentry.incidents.endpoints.project_alert_rule_task_details import (
     ProjectAlertRuleTaskDetailsEndpoint,
 )
+from sentry.scim.endpoints.teams import OrganizationSCIMTeamDetails, OrganizationSCIMTeamIndex
 from sentry.scim.endpoints.users import OrganizationSCIMUserDetails, OrganizationSCIMUserIndex
 
 from .endpoints.accept_organization_invite import AcceptOrganizationInvite
@@ -1342,6 +1343,16 @@ urlpatterns = [
                                 r"^Users/(?P<member_id>\d+)$",
                                 OrganizationSCIMUserDetails.as_view(),
                                 name="sentry-scim-organization-members-details",
+                            ),
+                            url(
+                                r"^Groups$",
+                                OrganizationSCIMTeamIndex.as_view(),
+                                name="sentry-scim-organization-team-index",
+                            ),
+                            url(
+                                r"^Groups/(?P<team_id>\d+)$",
+                                OrganizationSCIMTeamDetails.as_view(),
+                                name="sentry-scim-organization-team-details",
                             ),
                         ]
                     ),
