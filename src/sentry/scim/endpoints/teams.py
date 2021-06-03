@@ -34,19 +34,16 @@ delete_logger = logging.getLogger("sentry.deletions.api")
 
 CONFLICTING_SLUG_ERROR = "A team with this slug already exists."
 
-# TODO: write tests
 # TODO: must rectify permissions between scim and team endpoints
-# TODO: GET index filtering?
-# TODO: Correct error responses
 # TODO: what to name the routes in the code?
 # TODO: add prefix to all url routes
-# TODO: does it matter team 404 doesn't include error schema?
 # TODO: serialize ids // return strings as ids?
-# TODO: dont enable PUTs on these routes?
-# TODO: testing with okta
-# TODO: what should a PATCH failure do?
+# TODO: dont enable PUTs on these routes
+# TODO: what should a PATCH failure do? should all go in one transaction
 # TODO: users: inactive users -- remove them from the SCIM queries
 # TODO: docs: add notes about lowercaseing of emails, and slugification of teams/groups
+# TODO: use TeamEndpoint for getting a team
+# TODO: potentially change name of SCIMUser to SCIMOrgMember
 
 
 class OrganizationSCIMTeamIndex(SCIMEndpoint, OrganizationEndpoint):

@@ -1,14 +1,7 @@
 import pytest
 from django.urls import reverse
 
-from sentry.models import (
-    AuthProvider,
-    InviteStatus,
-    OrganizationMember,
-    OrganizationMemberTeam,
-    Team,
-    TeamStatus,
-)
+from sentry.models import AuthProvider, OrganizationMember, OrganizationMemberTeam, Team, TeamStatus
 from sentry.testutils import APITestCase
 
 CREATE_USER_POST_DATA = {
@@ -471,7 +464,7 @@ class SCIMGroupTests(APITestCase):
                 "Operations": [
                     {
                         "op": "remove",
-                        "path": 'members[value eq "2"]',
+                        "path": f'members[value eq "{member1.id}"]',
                     }
                 ],
             },
@@ -547,8 +540,14 @@ class SCIMGroupTests(APITestCase):
                     "displayName": "newname",
                     "id": 2,
                     "members": [
-                        {"display": "ffadfcaad01f4c3e9e9bd9224988966c@example.com", "value": "2"},
-                        {"display": "2d1585aab9c04e7b90a8e2e479a89e5f@example.com", "value": "3"},
+                        {
+                            "display": member1.get_email(),
+                            "value": f"{member1.id}",
+                        },
+                        {
+                            "display": member2.get_email(),
+                            "value": f"{member2.id}",
+                        },
                     ],
                     "meta": {"resourceType": "Group"},
                     "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
