@@ -105,7 +105,7 @@ function SymbolSources({
       if (symbolSource.id === appStoreConnectContext?.id) {
         const appStoreConnectErrors: string[] = [];
 
-        if (appStoreConnectContext.itunesSessionValid) {
+        if (appStoreConnectContext.itunesSessionValid === false) {
           symbolSourcesErrors.push(
             tct('Revalidate your iTunes Session for [link]', {
               link: (
@@ -119,7 +119,7 @@ function SymbolSources({
           appStoreConnectErrors.push(t('Revalidate your iTunes Session'));
         }
 
-        if (appStoreConnectContext.appstoreCredentialsValid) {
+        if (appStoreConnectContext.appstoreCredentialsValid === false) {
           symbolSourcesErrors.push(
             tct('Recheck your App Store Credentials for [link]', {
               link: (

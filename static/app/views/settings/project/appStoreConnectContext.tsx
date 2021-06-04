@@ -74,7 +74,6 @@ const Provider = withApi(({api, children, project, orgSlug}: ProviderProps) => {
       setAppStoreConnectValidationData({
         id: appStoreConnectSymbolSourceId,
         ...response,
-        itunesSessionValid: false,
       });
     } catch {
       // do nothing
